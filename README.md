@@ -169,10 +169,4 @@ Token numbers are generated automatically in sequence (A001, A002, A003, etc.).
 
 ---
 
-## Author
 
-Mansi Ahirrao
-
-Computer Science Engineering (Big Data & Cloud Engineering)
-
-MIT ADT University, Pune
