@@ -75,12 +75,6 @@ The application provides real-time queue operations, token management, analytics
 * Swagger UI
 * OpenAPI
 
-### Version Control
-
-* Git
-* GitHub
-
----
 
 ## Database Design
 
