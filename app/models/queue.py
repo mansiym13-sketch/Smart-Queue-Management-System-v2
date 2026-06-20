@@ -25,10 +25,7 @@ class Queue(Base):
 
     status = Column(
         String(20),
-        default="ACTIVE"
-    )
-
-    created_at = Column(
-        DateTime,
-        default=datetime.utcnow
-    )
+status = Column(
+    String(20),
+    default="ACTIVE"
+))
