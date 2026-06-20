@@ -63,3 +63,5 @@ python-jose
 passlib[bcrypt]
 python-multipart
 python-dotenv
+streamlit
+requests
