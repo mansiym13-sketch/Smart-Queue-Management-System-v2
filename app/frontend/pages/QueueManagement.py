@@ -45,12 +45,14 @@ with st.form("create_queue"):
 
 if create_btn:
 
-    payload = {
-        "name": queue_name,
-        "description": description
-    }
+    if not queue_name.strip() or not description.strip():
+        st.error("Queue name and description are required")
+        st.stop()
 
-    result = create_queue(payload)
+    result = create_queue(
+        queue_name,
+        description
+    )
 
     st.success("Queue created successfully")
     st.write(result)
