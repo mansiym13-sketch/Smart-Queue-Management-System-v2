@@ -1,34 +1,89 @@
-import sys
-import os
 import streamlit as st
 
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from api import login, signup
+from ui_helpers import show_api_error
 
-from api import login
+
 st.set_page_config(
     page_title="Login",
-    page_icon="🔐",
+    page_icon="random",
     layout="centered"
 )
 
-st.title("🔐 Smart Queue Login")
+st.title("Login")
 
-username = st.text_input("Username")
-password = st.text_input("Password", type="password")
+login_tab, signup_tab = st.tabs(
+    [
+        "Login",
+        "Sign Up"
+    ]
+)
 
-if st.button("Login"):
+with login_tab:
+    email = st.text_input(
+        "Email",
+        key="login_email"
+    )
 
-    result = login(username, password)
+    password = st.text_input(
+        "Password",
+        type="password",
+        key="login_password"
+    )
 
-    if "access_token" in result:
+    if st.button("Login", type="primary"):
+        if not email.strip() or not password:
+            st.error("Email and password are required")
+        else:
+            result = login(
+                email.strip(),
+                password
+            )
 
-        st.session_state["token"] = result["access_token"]
+            if not show_api_error(st, result, "Login failed"):
+                st.session_state["token"] = result.get("access_token")
+                st.session_state["username"] = result.get("username")
+                st.session_state["email"] = result.get("email")
+                st.session_state["role"] = result.get("role")
+                st.success("Login successful")
 
-        if "role" in result:
-            st.session_state["role"] = result["role"]
+with signup_tab:
+    username = st.text_input(
+        "Name",
+        key="signup_name"
+    )
 
-        st.success("Login Successful ✅")
+    signup_email = st.text_input(
+        "Email",
+        key="signup_email"
+    )
 
-    else:
-        st.error("Invalid Username or Password")
-        st.write(result)
+    signup_password = st.text_input(
+        "Password",
+        type="password",
+        key="signup_password"
+    )
+
+    role = st.selectbox(
+        "Role",
+        [
+            "customer",
+            "staff",
+            "admin"
+        ]
+    )
+
+    if st.button("Create Account"):
+        if not username.strip() or not signup_email.strip() or not signup_password:
+            st.error("Name, email, and password are required")
+        else:
+            result = signup(
+                username.strip(),
+                signup_email.strip(),
+                signup_password,
+                role
+            )
+
+            if not show_api_error(st, result, "Signup failed"):
+                st.success("Account created. You can log in now.")
+                st.json(result)

@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field, EmailStr
+from typing import Optional
+
+from pydantic import BaseModel, EmailStr
 
 class UserAuth(BaseModel):
     username: str
@@ -21,11 +23,21 @@ class TokenSchema(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    role: Optional[str] = None
 
 
 class QueueCreate(BaseModel):
     name: str
     description: str
+    status: str = "ACTIVE"
+
+
+class QueueUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
 
 
 class QueueOut(BaseModel):
@@ -42,6 +54,12 @@ class QueueOut(BaseModel):
 
 class JoinQueueRequest(BaseModel):
     user_id: int
+    priority_level: int = 1
+
+
+class CustomerJoinRequest(BaseModel):
+    customer_name: str
+    email: EmailStr
     priority_level: int = 1
 
 

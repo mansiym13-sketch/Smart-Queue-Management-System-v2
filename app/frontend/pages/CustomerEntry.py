@@ -1,160 +1,125 @@
 import streamlit as st
-import pandas as pd
+
+from api import get_queues, get_tokens, get_users, join_queue_customer
+from ui_helpers import build_token_dataframe, priority_value, queue_label, show_api_error
+
 
 st.set_page_config(
     page_title="Customer Entry",
-    page_icon="📝",
+    page_icon="random",
     layout="wide"
 )
 
-st.title("📝 Smart Customer Entry")
-st.markdown("---")
+st.title("Customer Entry")
 
-# =========================
-# CUSTOMER FORM
-# =========================
+queues = get_queues()
+tokens = get_tokens()
+users = get_users()
 
-with st.form("customer_form"):
 
-    st.subheader("Customer Details")
-
-    customer_name = st.text_input(
-        "Customer Name",
-        placeholder="Enter customer name"
-    )
-
-    email = st.text_input(
-        "Email",
-        placeholder="Enter email"
-    )
-
-    queue_name = st.selectbox(
-        "Queue Name",
-        [
-            "Hospital Queue",
-            "Bank Queue",
-            "Admissions Queue"
-        ]
-    )
-
-    reason = st.text_area(
-        "Reason For Visit",
-        placeholder="Example: Emergency, OPD Consultation, Enquiry..."
-    )
-
-    submitted = st.form_submit_button("Generate Token")
-
-# =========================
-# SMART PRIORITY LOGIC
-# =========================
-
-priority = "Low"
-
-if reason:
-
+def suggest_priority(reason):
     reason_lower = reason.lower()
 
-    if "emergency" in reason_lower:
-        priority = "High"
+    if "emergency" in reason_lower or "senior" in reason_lower or "urgent" in reason_lower:
+        return "High"
 
-    elif "senior" in reason_lower:
-        priority = "High"
+    if "consultation" in reason_lower or "opd" in reason_lower or "appointment" in reason_lower:
+        return "Medium"
 
-    elif "consultation" in reason_lower:
-        priority = "Medium"
+    return "Low"
 
-    elif "opd" in reason_lower:
-        priority = "Medium"
-
-    else:
-        priority = "Low"
-
-# =========================
-# DISPLAY SMART RESULTS
-# =========================
-
-if reason:
-
-    st.markdown("---")
-
-    st.subheader("🤖 Smart Recommendation")
-
-    if priority == "High":
-        st.error(f"Suggested Priority: {priority}")
-
-    elif priority == "Medium":
-        st.warning(f"Suggested Priority: {priority}")
-
-    else:
-        st.success(f"Suggested Priority: {priority}")
-
-# =========================
-# ESTIMATED WAIT TIME
-# =========================
-
-waiting_people = 5
-estimated_wait = waiting_people * 5
-
-if reason:
-
-    st.subheader("⏳ Estimated Wait Time")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.metric(
-            "Current Queue Position",
-            waiting_people
-        )
-
-    with col2:
-        st.metric(
-            "Estimated Wait Time",
-            f"{estimated_wait} min"
-        )
-
-# =========================
-# TOKEN GENERATION
-# =========================
-
-if submitted:
-
-    token_number = "A00" + str(waiting_people + 1)
-
-    st.success("Token Generated Successfully!")
-
-    st.subheader("🎟 Generated Token")
-
-    st.info(
-        f"""
-        Token Number: {token_number}
-
-        Customer: {customer_name}
-
-        Queue: {queue_name}
-
-        Priority: {priority}
-
-        Estimated Wait Time: {estimated_wait} Minutes
-        """
-    )
-
-# =========================
-# TODAY'S ENTRIES
-# =========================
 
 st.markdown("---")
 
-st.subheader("📋 Recent Entries")
+if not queues:
+    st.warning("Create a queue before generating customer tokens.")
+else:
+    with st.form("customer_form"):
+        st.subheader("Customer Details")
 
-sample_data = pd.DataFrame(
-    {
-        "Token": ["A001", "A002", "A003"],
-        "Customer": ["Mansi", "Rahul", "Sneha"],
-        "Queue": ["Hospital", "Hospital", "Bank"],
-        "Priority": ["High", "Medium", "Low"],
-        "Status": ["Waiting", "Called", "Serving"]
-    }
+        customer_name = st.text_input(
+            "Customer Name",
+            placeholder="Enter customer name"
+        )
+
+        email = st.text_input(
+            "Email",
+            placeholder="customer@example.com"
+        )
+
+        selected_queue = st.selectbox(
+            "Queue",
+            queues,
+            format_func=queue_label
+        )
+
+        reason = st.text_area(
+            "Reason For Visit",
+            placeholder="Example: Emergency, OPD consultation, enquiry"
+        )
+
+        suggested_priority = suggest_priority(reason) if reason else "Low"
+
+        priority = st.selectbox(
+            "Priority",
+            [
+                "Low",
+                "Medium",
+                "High"
+            ],
+            index=[
+                "Low",
+                "Medium",
+                "High"
+            ].index(suggested_priority)
+        )
+
+        submitted = st.form_submit_button(
+            "Generate Token",
+            type="primary"
+        )
+
+    if submitted:
+        if not customer_name.strip() or not email.strip():
+            st.error("Customer name and email are required")
+        else:
+            result = join_queue_customer(
+                selected_queue["id"],
+                customer_name.strip(),
+                email.strip(),
+                priority_value(priority)
+            )
+
+            if not show_api_error(st, result, "Token generation failed"):
+                queue_tokens = [
+                    token
+                    for token in tokens
+                    if token.get("queue_id") == selected_queue["id"]
+                    and token.get("status") in ["WAITING", "CALLED", "SERVING"]
+                ]
+
+                estimated_wait = len(queue_tokens) * 5
+
+                st.success("Token generated successfully")
+                st.info(
+                    f"Token {result.get('token_number')} for {customer_name.strip()} "
+                    f"in {selected_queue.get('name')}. Estimated wait: {estimated_wait} minutes."
+                )
+
+st.markdown("---")
+
+st.subheader("Recent Entries")
+
+token_df = build_token_dataframe(
+    tokens,
+    queues,
+    users
 )
 
-st.dataframe(sample_data, use_container_width=True)
+if not token_df.empty:
+    st.dataframe(
+        token_df,
+        use_container_width=True
+    )
+else:
+    st.info("No tokens generated yet.")

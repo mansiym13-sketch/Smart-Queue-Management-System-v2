@@ -13,8 +13,10 @@ from app.schemas import (
     UserAuth,
     TokenSchema,
     QueueCreate,
+    QueueUpdate,
     QueueOut,
     JoinQueueRequest,
+    CustomerJoinRequest,
     TokenOut,
     TokenStatusUpdate,
     DashboardStats
@@ -115,7 +117,10 @@ async def login(
     return {
         "access_token": create_access_token(user.email),
         "refresh_token": create_refresh_token(user.email),
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "username": user.name,
+        "email": user.email,
+        "role": user.role
     }
 
 
@@ -156,7 +161,8 @@ async def create_queue(
 ):
     new_queue = Queue(
         name=queue.name,
-        description=queue.description
+        description=queue.description,
+        status=queue.status.upper()
     )
 
     db.add(new_queue)
@@ -199,6 +205,73 @@ async def get_queue(
         )
 
     return queue
+
+
+@app.put(
+    "/queues/{queue_id}",
+    tags=["Queues"],
+    summary="Update a queue",
+    response_model=QueueOut
+)
+async def update_queue(
+    queue_id: int,
+    data: QueueUpdate,
+    db: Session = Depends(get_db)
+):
+    queue = db.query(Queue).filter(
+        Queue.id == queue_id
+    ).first()
+
+    if not queue:
+        raise HTTPException(
+            status_code=404,
+            detail="Queue not found"
+        )
+
+    if data.name is not None:
+        queue.name = data.name
+
+    if data.description is not None:
+        queue.description = data.description
+
+    if data.status is not None:
+        queue.status = data.status.upper()
+
+    db.commit()
+    db.refresh(queue)
+
+    return queue
+
+
+@app.delete(
+    "/queues/{queue_id}",
+    tags=["Queues"],
+    summary="Delete a queue"
+)
+async def delete_queue(
+    queue_id: int,
+    db: Session = Depends(get_db)
+):
+    queue = db.query(Queue).filter(
+        Queue.id == queue_id
+    ).first()
+
+    if not queue:
+        raise HTTPException(
+            status_code=404,
+            detail="Queue not found"
+        )
+
+    db.query(Token).filter(
+        Token.queue_id == queue_id
+    ).delete()
+
+    db.delete(queue)
+    db.commit()
+
+    return {
+        "message": "Queue deleted successfully"
+    }
 
 
 # =========================
@@ -266,6 +339,91 @@ async def join_queue(
     db.refresh(token)
 
     return token
+
+
+@app.post(
+    "/queues/{queue_id}/join-customer",
+    tags=["Queues"],
+    summary="Create or find a customer and join a queue",
+    response_model=TokenOut
+)
+async def join_queue_customer(
+    queue_id: int,
+    request: CustomerJoinRequest,
+    db: Session = Depends(get_db)
+):
+    queue = db.query(Queue).filter(
+        Queue.id == queue_id
+    ).first()
+
+    if not queue:
+        raise HTTPException(
+            status_code=404,
+            detail="Queue not found"
+        )
+
+    user = db.query(User).filter(
+        User.email == request.email
+    ).first()
+
+    if not user:
+        user = User(
+            name=request.customer_name,
+            email=request.email,
+            password_hash=get_hashed_password("customer-entry"),
+            role="customer"
+        )
+
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    last_token = (
+        db.query(Token)
+        .filter(Token.queue_id == queue_id)
+        .order_by(Token.id.desc())
+        .first()
+    )
+
+    last_token_number = (
+        last_token.token_number
+        if last_token
+        else None
+    )
+
+    token_number = generate_token_number(
+        last_token_number
+    )
+
+    token = Token(
+        token_number=token_number,
+        queue_id=queue_id,
+        user_id=user.id,
+        priority_level=request.priority_level,
+        status="WAITING"
+    )
+
+    db.add(token)
+    db.commit()
+    db.refresh(token)
+
+    return token
+
+
+@app.get(
+    "/tokens",
+    tags=["Tokens"],
+    summary="Get all tokens",
+    response_model=list[TokenOut]
+)
+def get_tokens(
+    db: Session = Depends(get_db)
+):
+    return (
+        db.query(Token)
+        .order_by(Token.id.desc())
+        .all()
+    )
 
 
 @app.get(

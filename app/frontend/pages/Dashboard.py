@@ -1,144 +1,121 @@
 import streamlit as st
-import pandas as pd
 
-# Page Config
+from api import call_next_token, get_dashboard_stats, get_queues, get_tokens, get_users
+from ui_helpers import build_token_dataframe, queue_label, queue_summary_dataframe, show_api_error
+
+
 st.set_page_config(
     page_title="Smart Queue Dashboard",
-    page_icon="📊",
+    page_icon="random",
     layout="wide"
 )
 
-# Title
-st.title("📊 Smart Queue Management Dashboard")
-st.markdown("---")
+st.title("Smart Queue Management Dashboard")
 
-# =========================
-# KPI CARDS
-# =========================
+stats = get_dashboard_stats()
+queues = get_queues()
+tokens = get_tokens()
+users = get_users()
+
+st.markdown("---")
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.metric("👥 Total Customers Today", 124)
+    st.metric("Total Users", stats.get("total_users", 0) if isinstance(stats, dict) else 0)
 
 with col2:
-    st.metric("🏢 Active Queues", 5)
+    st.metric("Active Queues", sum(1 for queue in queues if queue.get("status") == "ACTIVE"))
 
 with col3:
-    st.metric("⏳ Waiting Customers", 18)
+    st.metric("Waiting Tokens", sum(1 for token in tokens if token.get("status") == "WAITING"))
 
 col4, col5, col6 = st.columns(3)
 
 with col4:
-    st.metric("✅ Completed Customers", 96)
+    st.metric("Completed Tokens", stats.get("completed_tokens", 0) if isinstance(stats, dict) else 0)
 
 with col5:
-    st.metric("🕒 Average Wait Time", "12 min")
+    st.metric("Active Tokens", stats.get("active_tokens", 0) if isinstance(stats, dict) else 0)
 
 with col6:
-    st.metric("🔥 High Priority Customers", 4)
+    st.metric("High Priority Waiting", sum(
+        1
+        for token in tokens
+        if token.get("priority_level") == 3 and token.get("status") == "WAITING"
+    ))
 
 st.markdown("---")
 
-# =========================
-# LIVE QUEUE MONITOR
-# =========================
+st.subheader("Live Queue Monitor")
 
-st.subheader("📡 Live Queue Monitor")
-
-queue_data = pd.DataFrame({
-    "Queue": ["Hospital", "Bank", "Admissions"],
-    "Now Serving": ["A012", "B005", "C003"],
-    "Waiting Customers": [15, 8, 4]
-})
-
-st.dataframe(queue_data, use_container_width=True)
-
-st.markdown("---")
-
-# =========================
-# QUEUE LOAD MONITORING
-# =========================
-
-st.subheader("📈 Queue Load Distribution")
-
-chart_data = pd.DataFrame({
-    "Queue": ["Hospital", "Bank", "Admissions"],
-    "Customers": [20, 8, 5]
-})
-
-st.bar_chart(
-    chart_data.set_index("Queue")
+summary = queue_summary_dataframe(
+    tokens,
+    queues
 )
 
-st.markdown("---")
+if not summary.empty:
+    st.dataframe(
+        summary,
+        use_container_width=True
+    )
 
-# =========================
-# TOKEN MANAGEMENT PREVIEW
-# =========================
-
-st.subheader("🎟 Token Management")
-
-token_data = pd.DataFrame({
-    "Token": ["A001", "A002", "B001", "C001"],
-    "Customer": ["Mansi", "Rahul", "Amit", "Sneha"],
-    "Queue": ["Hospital", "Hospital", "Bank", "Admissions"],
-    "Priority": ["High", "Medium", "Low", "Medium"],
-    "Status": ["Waiting", "Called", "Waiting", "Serving"]
-})
-
-st.dataframe(token_data, use_container_width=True)
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.button("📢 Call Next")
-
-with col2:
-    st.button("🩺 Mark Serving")
-
-with col3:
-    st.button("✅ Mark Completed")
+    st.bar_chart(
+        summary.set_index("Queue")[["Waiting", "Called", "Serving"]]
+    )
+else:
+    st.info("No queues or tokens available yet.")
 
 st.markdown("---")
 
-# =========================
-# SMART ALERTS
-# =========================
+st.subheader("Token Preview")
 
-st.subheader("🚨 Smart Alerts")
-
-st.warning(
-    "⚠ Hospital Queue overloaded. Current waiting count: 25"
+token_df = build_token_dataframe(
+    tokens[:10],
+    queues,
+    users
 )
 
-st.error(
-    "⚠ High Priority Customer waiting for more than 20 minutes"
-)
-
-st.info(
-    "ℹ Admissions Queue performing normally"
-)
-
-st.markdown("---")
-
-# =========================
-# PERFORMANCE ANALYTICS
-# =========================
-
-st.subheader("📋 Queue Performance")
-
-performance_data = pd.DataFrame({
-    "Queue": ["Hospital", "Bank", "Admissions"],
-    "Completed Customers": [120, 80, 40]
-})
-
-st.dataframe(performance_data, use_container_width=True)
+if not token_df.empty:
+    st.dataframe(
+        token_df,
+        use_container_width=True
+    )
+else:
+    st.info("No tokens generated yet.")
 
 st.markdown("---")
 
-# =========================
-# FOOTER
-# =========================
+st.subheader("Quick Action")
 
-st.success("✅ Smart Queue Management System Running Successfully")
+if queues:
+    selected_queue = st.selectbox(
+        "Queue",
+        queues,
+        format_func=queue_label
+    )
+
+    if st.button("Call Next Token", type="primary"):
+        result = call_next_token(selected_queue["id"])
+
+        if not show_api_error(st, result, "Unable to call next token"):
+            st.success(f"Called token {result.get('token_number')}")
+            st.rerun()
+else:
+    st.info("Create a queue before calling tokens.")
+
+st.markdown("---")
+
+if tokens:
+    high_priority_waiting = sum(
+        1
+        for token in tokens
+        if token.get("priority_level") == 3 and token.get("status") == "WAITING"
+    )
+
+    if high_priority_waiting:
+        st.warning(f"{high_priority_waiting} high priority token(s) are waiting.")
+    else:
+        st.success("No high priority tokens are waiting.")
+else:
+    st.info("No token activity yet.")

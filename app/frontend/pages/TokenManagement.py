@@ -1,145 +1,171 @@
 import streamlit as st
-import pandas as pd
+
+from api import call_next_token, get_queues, get_tokens, get_users, update_token_status
+from ui_helpers import (
+    STATUS_OPTIONS,
+    build_token_dataframe,
+    queue_label,
+    queue_summary_dataframe,
+    show_api_error,
+    token_label,
+)
+
 
 st.set_page_config(
     page_title="Token Management",
-    page_icon="🎟",
+    page_icon="random",
     layout="wide"
 )
 
-st.title("🎟 Token Management")
-st.markdown("---")
+st.title("Token Management")
 
-# =========================
-# FILTERS
-# =========================
+queues = get_queues()
+tokens = get_tokens()
+users = get_users()
+
+queue_options = [
+    {
+        "id": None,
+        "name": "All Queues"
+    }
+] + queues
+
+st.markdown("---")
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
     queue_filter = st.selectbox(
         "Queue",
-        ["All", "Hospital", "Bank", "Admissions"]
+        queue_options,
+        format_func=queue_label
     )
 
 with col2:
     status_filter = st.selectbox(
         "Status",
-        ["All", "Waiting", "Serving", "Completed"]
+        ["ALL"] + STATUS_OPTIONS
     )
 
 with col3:
-    search = st.text_input(
-        "Search Customer"
+    search = st.text_input("Search Customer")
+
+filtered_tokens = tokens
+
+if queue_filter.get("id") is not None:
+    filtered_tokens = [
+        token
+        for token in filtered_tokens
+        if token.get("queue_id") == queue_filter.get("id")
+    ]
+
+if status_filter != "ALL":
+    filtered_tokens = [
+        token
+        for token in filtered_tokens
+        if token.get("status") == status_filter
+    ]
+
+token_df = build_token_dataframe(
+    filtered_tokens,
+    queues,
+    users
+)
+
+if search.strip() and not token_df.empty:
+    token_df = token_df[
+        token_df["Customer"].astype(str).str.contains(
+            search.strip(),
+            case=False,
+            na=False
+        )
+    ]
+
+st.markdown("---")
+
+st.subheader("Active Tokens")
+
+if not token_df.empty:
+    st.dataframe(
+        token_df,
+        use_container_width=True
     )
+else:
+    st.info("No tokens match the current filters.")
 
 st.markdown("---")
 
-# =========================
-# TOKEN TABLE
-# =========================
+st.subheader("Queue Actions")
 
-token_data = pd.DataFrame({
-    "Token": ["A001", "A002", "A003", "B001", "C001"],
-    "Customer": ["Mansi", "Rahul", "Sneha", "Amit", "Priya"],
-    "Queue": ["Hospital", "Hospital", "Hospital", "Bank", "Admissions"],
-    "Priority": ["High", "Medium", "Low", "Medium", "High"],
-    "Status": ["Waiting", "Serving", "Completed", "Waiting", "Waiting"]
-})
+action_col1, action_col2 = st.columns(2)
 
-st.subheader("📋 Active Tokens")
+with action_col1:
+    if queues:
+        action_queue = st.selectbox(
+            "Queue For Call Next",
+            queues,
+            format_func=queue_label
+        )
 
-st.dataframe(
-    token_data,
-    use_container_width=True
+        if st.button("Call Next Token", type="primary"):
+            result = call_next_token(action_queue["id"])
+
+            if not show_api_error(st, result, "Unable to call next token"):
+                st.success(f"Called token {result.get('token_number')}")
+                st.rerun()
+    else:
+        st.info("Create a queue before calling tokens.")
+
+with action_col2:
+    if tokens:
+        selected_token = st.selectbox(
+            "Token To Update",
+            tokens,
+            format_func=token_label
+        )
+
+        new_status = st.selectbox(
+            "New Status",
+            STATUS_OPTIONS,
+            index=STATUS_OPTIONS.index(selected_token.get("status"))
+            if selected_token.get("status") in STATUS_OPTIONS
+            else 0
+        )
+
+        if st.button("Update Token Status"):
+            result = update_token_status(
+                selected_token["id"],
+                new_status
+            )
+
+            if not show_api_error(st, result, "Unable to update token"):
+                st.success("Token status updated")
+                st.rerun()
+    else:
+        st.info("No tokens are available to update.")
+
+st.markdown("---")
+
+st.subheader("Queue Summary")
+
+summary = queue_summary_dataframe(
+    tokens,
+    queues
 )
 
-st.markdown("---")
-
-# =========================
-# TOKEN ACTIONS
-# =========================
-
-st.subheader("⚙ Queue Actions")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    if st.button("📢 Call Next"):
-        st.success("Next customer called successfully")
-
-with col2:
-    if st.button("🩺 Mark Serving"):
-        st.info("Customer status changed to Serving")
-
-with col3:
-    if st.button("✅ Mark Completed"):
-        st.success("Customer marked as Completed")
-
-st.markdown("---")
-
-# =========================
-# CURRENT SERVING
-# =========================
-
-st.subheader("🔔 Currently Serving")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric(
-        "Hospital",
-        "A002"
+if not summary.empty:
+    st.dataframe(
+        summary,
+        use_container_width=True
     )
+else:
+    st.info("No queue summary available yet.")
 
-with col2:
-    st.metric(
-        "Bank",
-        "B001"
-    )
+high_priority_waiting = [
+    token
+    for token in tokens
+    if token.get("priority_level") == 3 and token.get("status") == "WAITING"
+]
 
-with col3:
-    st.metric(
-        "Admissions",
-        "C001"
-    )
-
-st.markdown("---")
-
-# =========================
-# QUEUE SUMMARY
-# =========================
-
-st.subheader("📊 Queue Summary")
-
-summary = pd.DataFrame({
-    "Queue": ["Hospital", "Bank", "Admissions"],
-    "Waiting": [12, 5, 3],
-    "Serving": [1, 1, 1],
-    "Completed": [45, 20, 15]
-})
-
-st.dataframe(
-    summary,
-    use_container_width=True
-)
-
-st.markdown("---")
-
-# =========================
-# HIGH PRIORITY ALERTS
-# =========================
-
-st.subheader("🚨 Priority Alerts")
-
-st.error(
-    "High Priority Customer A001 waiting for 18 minutes"
-)
-
-st.warning(
-    "Hospital Queue nearing overload capacity"
-)
-
-st.success(
-    "Bank Queue operating normally"
-)
+if high_priority_waiting:
+    st.warning(f"{len(high_priority_waiting)} high priority token(s) are waiting.")

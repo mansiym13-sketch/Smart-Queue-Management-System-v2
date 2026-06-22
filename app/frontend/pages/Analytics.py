@@ -1,172 +1,133 @@
-import streamlit as st
 import pandas as pd
 import plotly.express as px
+import streamlit as st
+
+from api import get_dashboard_stats, get_queues, get_tokens
+from ui_helpers import priority_label, queue_summary_dataframe
+
 
 st.set_page_config(
     page_title="Analytics",
-    page_icon="📈",
+    page_icon="random",
     layout="wide"
 )
 
-st.title("📈 Queue Analytics Dashboard")
+st.title("Queue Analytics")
+
+stats = get_dashboard_stats()
+queues = get_queues()
+tokens = get_tokens()
 
 st.markdown("---")
-
-# =========================
-# KPI CARDS
-# =========================
 
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.metric("Total Customers", 250)
+    st.metric("Total Tokens", stats.get("total_tokens", len(tokens)) if isinstance(stats, dict) else len(tokens))
 
 with col2:
-    st.metric("Completed", 180)
+    st.metric("Completed", stats.get("completed_tokens", 0) if isinstance(stats, dict) else 0)
 
 with col3:
-    st.metric("Waiting", 45)
+    st.metric("Waiting", sum(1 for token in tokens if token.get("status") == "WAITING"))
 
 with col4:
-    st.metric("Avg Wait Time", "12 min")
+    st.metric("Queues", stats.get("total_queues", len(queues)) if isinstance(stats, dict) else len(queues))
 
 st.markdown("---")
 
-# =========================
-# QUEUE LOAD DISTRIBUTION
-# =========================
-
-st.subheader("📊 Queue Load Distribution")
-
-queue_load = pd.DataFrame({
-    "Queue": ["Hospital", "Bank", "Admissions"],
-    "Customers": [25, 10, 8]
-})
-
-fig = px.bar(
-    queue_load,
-    x="Queue",
-    y="Customers",
-    title="Customers Waiting Per Queue"
+summary = queue_summary_dataframe(
+    tokens,
+    queues
 )
 
-st.plotly_chart(fig, use_container_width=True)
+if not summary.empty:
+    st.subheader("Queue Load Distribution")
 
-# =========================
-# COMPLETION RATE
-# =========================
+    fig = px.bar(
+        summary,
+        x="Queue",
+        y=["Waiting", "Called", "Serving", "Completed"],
+        title="Token Status By Queue",
+        barmode="group"
+    )
 
-st.subheader("✅ Completion Rate")
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+else:
+    st.info("No queue data available yet.")
 
-completion_data = pd.DataFrame({
-    "Status": ["Completed", "Waiting", "Serving"],
-    "Count": [180, 45, 25]
-})
-
-fig2 = px.pie(
-    completion_data,
-    values="Count",
-    names="Status",
-    title="Customer Status Distribution"
+status_counts = pd.DataFrame(
+    [
+        {
+            "Status": status,
+            "Count": sum(1 for token in tokens if token.get("status") == status)
+        }
+        for status in ["WAITING", "CALLED", "SERVING", "COMPLETED"]
+    ]
 )
 
-st.plotly_chart(fig2, use_container_width=True)
+if status_counts["Count"].sum() > 0:
+    st.subheader("Status Distribution")
 
-# =========================
-# QUEUE PERFORMANCE
-# =========================
+    fig2 = px.pie(
+        status_counts,
+        values="Count",
+        names="Status",
+        title="Token Status Distribution"
+    )
 
-st.subheader("🏆 Queue Performance")
+    st.plotly_chart(
+        fig2,
+        use_container_width=True
+    )
 
-performance = pd.DataFrame({
-    "Queue": ["Hospital", "Bank", "Admissions"],
-    "Completed Customers": [120, 80, 50]
-})
-
-fig3 = px.bar(
-    performance,
-    x="Queue",
-    y="Completed Customers",
-    title="Queue-wise Completed Customers"
+priority_counts = pd.DataFrame(
+    [
+        {
+            "Priority": label,
+            "Count": sum(
+                1
+                for token in tokens
+                if priority_label(token.get("priority_level")) == label
+            )
+        }
+        for label in ["High", "Medium", "Low"]
+    ]
 )
 
-st.plotly_chart(fig3, use_container_width=True)
+if priority_counts["Count"].sum() > 0:
+    st.subheader("Priority Distribution")
 
-# =========================
-# PEAK HOURS
-# =========================
+    fig3 = px.bar(
+        priority_counts,
+        x="Priority",
+        y="Count",
+        title="Tokens By Priority"
+    )
 
-st.subheader("⏰ Peak Hours")
+    st.plotly_chart(
+        fig3,
+        use_container_width=True
+    )
 
-hour_data = pd.DataFrame({
-    "Hour": [
-        "9 AM", "10 AM", "11 AM",
-        "12 PM", "1 PM", "2 PM",
-        "3 PM", "4 PM"
-    ],
-    "Visitors": [12, 18, 25, 30, 28, 22, 15, 10]
-})
+st.markdown("---")
 
-fig4 = px.line(
-    hour_data,
-    x="Hour",
-    y="Visitors",
-    markers=True,
-    title="Customer Traffic Throughout The Day"
-)
+st.subheader("Queue Summary")
 
-st.plotly_chart(fig4, use_container_width=True)
+if not summary.empty:
+    st.dataframe(
+        summary,
+        use_container_width=True
+    )
 
-# =========================
-# HIGH PRIORITY ANALYSIS
-# =========================
+    busiest = summary.sort_values(
+        "Total",
+        ascending=False
+    ).iloc[0]
 
-st.subheader("🔥 High Priority Customers")
-
-priority_data = pd.DataFrame({
-    "Priority": ["High", "Medium", "Low"],
-    "Count": [20, 70, 160]
-})
-
-fig5 = px.pie(
-    priority_data,
-    values="Count",
-    names="Priority",
-    title="Priority Distribution"
-)
-
-st.plotly_chart(fig5, use_container_width=True)
-
-# =========================
-# TABLE
-# =========================
-
-st.subheader("📋 Queue Summary")
-
-summary = pd.DataFrame({
-    "Queue": ["Hospital", "Bank", "Admissions"],
-    "Waiting": [25, 10, 8],
-    "Serving": [3, 2, 1],
-    "Completed": [120, 80, 50],
-    "Average Wait": ["15 min", "8 min", "5 min"]
-})
-
-st.dataframe(summary, use_container_width=True)
-
-# =========================
-# SMART INSIGHTS
-# =========================
-
-st.subheader("🤖 Smart Insights")
-
-st.warning(
-    "Hospital Queue has the highest waiting count. Consider opening another counter."
-)
-
-st.info(
-    "Admissions Queue has the lowest average waiting time."
-)
-
-st.success(
-    "Overall completion rate is above 80%."
-)
+    st.info(f"{busiest['Queue']} currently has the highest token volume.")
+else:
+    st.info("Create queues and tokens to see insights.")

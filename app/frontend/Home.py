@@ -1,81 +1,66 @@
 import streamlit as st
 
+from api import get_dashboard_stats, get_queues, get_tokens, is_backend_running
+
+
 st.set_page_config(
     page_title="Smart Queue Management System",
-    page_icon="🎟",
+    page_icon="random",
     layout="wide"
 )
 
-st.title("🎟 Smart Queue Management System")
+st.title("Smart Queue Management System")
 
-st.markdown("""
-### Welcome to Smart Queue Management System
+backend_online = is_backend_running()
 
-A real-time queue management platform for:
+if backend_online:
+    st.success("Backend connected")
+else:
+    st.error("Backend is not reachable. Check BACKEND_URL or the Render backend service.")
 
-- 🏥 Hospitals
-- 🏦 Banks
-- 🎓 Colleges
-- 🍽 Canteens
-
-Manage customers, tokens, queues, analytics and reports from one dashboard.
-""")
+stats = get_dashboard_stats() if backend_online else {}
+queues = get_queues() if backend_online else []
+tokens = get_tokens() if backend_online else []
 
 st.markdown("---")
 
-st.subheader("🚀 Features")
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.metric("Users", stats.get("total_users", 0))
+
+with col2:
+    st.metric("Queues", stats.get("total_queues", len(queues)))
+
+with col3:
+    st.metric("Tokens", stats.get("total_tokens", len(tokens)))
+
+with col4:
+    st.metric("Active Tokens", stats.get("active_tokens", 0))
+
+st.markdown("---")
+
+st.subheader("What You Can Do")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.success("Dashboard Monitoring")
-    st.success("Customer Entry")
-    st.success("Token Management")
-    st.success("Queue Management")
+    st.write("- Create, update, and delete queues")
+    st.write("- Register customers into live queues")
+    st.write("- Generate queue tokens with priority")
 
 with col2:
-    st.success("Analytics Dashboard")
-    st.success("Reports & Export")
-    st.success("Priority Handling")
-    st.success("Estimated Wait Time")
+    st.write("- Call the next waiting token")
+    st.write("- Update token status")
+    st.write("- View dashboard, analytics, and CSV reports")
 
 st.markdown("---")
 
-st.subheader("📊 System Overview")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric("Active Queues", 5)
-
-with col2:
-    st.metric("Customers Today", 124)
-
-with col3:
-    st.metric("Average Wait Time", "12 min")
-
-st.markdown("---")
-
-st.info(
-    """
-    Use the sidebar to navigate between modules:
-    
-    🏠 Home
-    
-    📊 Dashboard
-    
-    📝 Customer Entry
-    
-    🎟 Token Management
-    
-    📈 Analytics
-    
-    🏢 Queue Management
-    
-    📑 Reports
-    """
-)
-
-st.markdown("---")
-
-st.success("System Status: Online ✅")
+if queues:
+    st.subheader("Available Queues")
+    st.dataframe(
+        queues,
+        use_container_width=True
+    )
+else:
+    st.info("No queues found yet. Create one from Queue Management.")
