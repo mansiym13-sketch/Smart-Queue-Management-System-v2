@@ -1,8 +1,9 @@
 from fastapi import FastAPI, status, HTTPException, Depends
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import Base, engine, get_db
 
 from app.models.user import User
 from app.models.queue import Queue
@@ -36,6 +37,29 @@ app = FastAPI(
     description="Queue Management System with JWT Authentication, Priority Queue Processing, Token Tracking and Analytics Dashboard",
     version="1.0.0"
 )
+
+
+@app.on_event("startup")
+def prepare_database():
+    Base.metadata.create_all(bind=engine)
+
+    if engine.dialect.name != "postgresql":
+        return
+
+    migration_statements = [
+        "ALTER TABLE queues ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'ACTIVE'",
+        "ALTER TABLE queues ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        "ALTER TABLE tokens ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        "UPDATE queues SET status = 'ACTIVE' WHERE status IS NULL",
+        "UPDATE queues SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL",
+        "UPDATE tokens SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL",
+        "UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"
+    ]
+
+    with engine.begin() as connection:
+        for statement in migration_statements:
+            connection.execute(text(statement))
 
 
 # =========================
